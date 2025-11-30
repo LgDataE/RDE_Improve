@@ -113,8 +113,24 @@ class ImageDataset(Dataset):
 
     def __getitem__(self, index):
         pid, img_path = self.image_pids[index], self.img_paths[index]
-        img = read_image(img_path)
         
+        # Try to read occluded image first, fallback to holistic if not found
+        try:
+            img = read_image(img_path)
+        except IOError as e:
+            # Fallback to holistic image if occluded image doesn't exist
+            if self.args and hasattr(self.args, 'test_dt_type') and self.args.test_dt_type == 0:
+                # Reverse the path transformation to get holistic path
+                holistic_path = img_path.replace('_occlusion_new', '')
+                try:
+                    print(f"Occluded image not found: {img_path}")
+                    print(f"Fallback to holistic image: {holistic_path}")
+                    img = read_image(holistic_path)
+                except IOError:
+                    # If both don't exist, raise the original error
+                    raise IOError(f"Neither occluded ({img_path}) nor holistic ({holistic_path}) images found")
+            else:
+                raise e
 
         if self.transform is not None:
             img = self.transform(img)
@@ -178,7 +194,24 @@ class ImageTextDataset(Dataset):
 
     def __getitem__(self, index):
         pid, image_id, img_path, caption = self.dataset[index]
-        img = read_image(img_path)
+        
+        # Try to read occluded image first, fallback to holistic if not found
+        try:
+            img = read_image(img_path)
+        except IOError as e:
+            # Fallback to holistic image if occluded image doesn't exist
+            if hasattr(self.args, 'train_dt_type') and self.args.train_dt_type == 0:
+                # Reverse the path transformation to get holistic path
+                holistic_path = img_path.replace('_occlusion_new', '')
+                try:
+                    print(f"Occluded image not found: {img_path}")
+                    print(f"Fallback to holistic image: {holistic_path}")
+                    img = read_image(holistic_path)
+                except IOError:
+                    # If both don't exist, raise the original error
+                    raise IOError(f"Neither occluded ({img_path}) nor holistic ({holistic_path}) images found")
+            else:
+                raise e
 
         if self.transform is not None:
             img = self.transform(img)
