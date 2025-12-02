@@ -100,9 +100,9 @@ def main():
             
         processed_ids.add(img_id)
         
-        # Paths
-        holistic_path = os.path.join(data_root, img_path)
-        occlusion_path = os.path.join(output_dir, img_path.replace('imgs/', 'imgs_occlusion_new/'))
+        # Paths - fix the path construction
+        holistic_path = os.path.join(data_root, 'imgs', os.path.basename(img_path))
+        occlusion_path = os.path.join(output_dir, 'imgs_occlusion_new', os.path.basename(img_path))
         
         # Create directory
         os.makedirs(os.path.dirname(occlusion_path), exist_ok=True)

@@ -122,6 +122,18 @@ class ImageDataset(Dataset):
             if self.args and hasattr(self.args, 'test_dt_type') and self.args.test_dt_type == 0:
                 # Reverse the path transformation to get holistic path
                 holistic_path = img_path.replace('_occlusion_new', '')
+                
+                # If still not found, try the original data path
+                if not os.path.exists(holistic_path):
+                    # Try to construct the original path
+                    if 'RSTPReid' in img_path:
+                        # Extract filename and construct original path
+                        filename = os.path.basename(img_path)
+                        holistic_path = os.path.join('/kaggle/working/RDE_Improve/data/RSTPReid/imgs', filename)
+                    elif 'CUHK-PEDES' in img_path:
+                        filename = os.path.basename(img_path)
+                        holistic_path = os.path.join('/kaggle/working/RDE_Improve/data/CUHK-PEDES/imgs', filename)
+                
                 try:
                     print(f"Occluded image not found: {img_path}")
                     print(f"Fallback to holistic image: {holistic_path}")
@@ -203,6 +215,18 @@ class ImageTextDataset(Dataset):
             if hasattr(self.args, 'train_dt_type') and self.args.train_dt_type == 0:
                 # Reverse the path transformation to get holistic path
                 holistic_path = img_path.replace('_occlusion_new', '')
+                
+                # If still not found, try the original data path
+                if not os.path.exists(holistic_path):
+                    # Try to construct the original path
+                    if 'RSTPReid' in img_path:
+                        # Extract filename and construct original path
+                        filename = os.path.basename(img_path)
+                        holistic_path = os.path.join('/kaggle/working/RDE_Improve/data/RSTPReid/imgs', filename)
+                    elif 'CUHK-PEDES' in img_path:
+                        filename = os.path.basename(img_path)
+                        holistic_path = os.path.join('/kaggle/working/RDE_Improve/data/CUHK-PEDES/imgs', filename)
+                
                 try:
                     print(f"Occluded image not found: {img_path}")
                     print(f"Fallback to holistic image: {holistic_path}")
