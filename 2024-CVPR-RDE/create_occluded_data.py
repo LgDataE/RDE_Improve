@@ -53,26 +53,38 @@ def generate_occlusion(args):
 
     occlusion_path = args.occlusion_path
     
+    # Create output directory in writable location
+    base_output_dir = args.data_root
+    if not os.access(base_output_dir, os.W_OK):
+        # If data_root is read-only, create output in current directory
+        base_output_dir = f'./occluded_data/{args.data_name}'
+        print(f"Data root is read-only. Creating occluded images in: {base_output_dir}")
+    
+    os.makedirs(base_output_dir, exist_ok=True)
+    
     if name == 'CUHK-PEDES':
         last_id = -1
         for data in reid_raw_data:
             holistic_path = os.path.join(args.data_root, 'imgs', data['file_path'])
             
-            # Determine save path
+            # Determine save path in writable location
+            rel_path = data['file_path']
             if "cam_a" in holistic_path:
-                save_path = holistic_path.replace('cam_a', 'cam_a_occlusion_new')
+                rel_occlusion_path = rel_path.replace('cam_a', 'cam_a_occlusion_new')
             elif "cam_b" in holistic_path:
-                save_path = holistic_path.replace('cam_b', 'cam_b_occlusion_new')
+                rel_occlusion_path = rel_path.replace('cam_b', 'cam_b_occlusion_new')
             elif "CUHK01" in holistic_path:
-                save_path = holistic_path.replace('CUHK01', 'CUHK01_occlusion_new')     
+                rel_occlusion_path = rel_path.replace('CUHK01', 'CUHK01_occlusion_new')     
             elif "CUHK03" in holistic_path:
-                save_path = holistic_path.replace('CUHK03', 'CUHK03_occlusion_new') 
+                rel_occlusion_path = rel_path.replace('CUHK03', 'CUHK03_occlusion_new') 
             elif "Market" in holistic_path:
-                save_path = holistic_path.replace('Market', 'Market_occlusion_new')       
+                rel_occlusion_path = rel_path.replace('Market', 'Market_occlusion_new')       
             elif "test_query" in holistic_path:
-                save_path = holistic_path.replace('test_query', 'test_query_occlusion_new')
+                rel_occlusion_path = rel_path.replace('test_query', 'test_query_occlusion_new')
             elif "train_query" in holistic_path:
-                save_path = holistic_path.replace('train_query', 'train_query_occlusion_new')
+                rel_occlusion_path = rel_path.replace('train_query', 'train_query_occlusion_new')
+            
+            save_path = os.path.join(base_output_dir, rel_occlusion_path)
             
             # Create directory
             save_path2 = os.path.dirname(os.path.abspath(save_path))
@@ -92,10 +104,14 @@ def generate_occlusion(args):
         for data in reid_raw_data:
             holistic_path = os.path.join(args.data_root, 'imgs', data['file_path'])
             
+            # Determine save path in writable location
+            rel_path = data['file_path']
             if "test" in holistic_path:
-                save_path = holistic_path.replace('test', 'test_occlusion_new')
+                rel_occlusion_path = rel_path.replace('test', 'test_occlusion_new')
             elif "train" in holistic_path:
-                save_path = holistic_path.replace('train', 'train_occlusion_new')
+                rel_occlusion_path = rel_path.replace('train', 'train_occlusion_new')
+                
+            save_path = os.path.join(base_output_dir, rel_occlusion_path)
                 
             save_path2 = os.path.dirname(os.path.abspath(save_path))
             os.makedirs(save_path2, exist_ok=True)
@@ -114,8 +130,12 @@ def generate_occlusion(args):
         for data in reid_raw_data:
             holistic_path = os.path.join(args.data_root, 'imgs', data['img_path'])
             
+            # Determine save path in writable location
+            rel_path = data['img_path']
             if "imgs" in holistic_path:
-                save_path = holistic_path.replace('imgs', 'imgs_occlusion_new')
+                rel_occlusion_path = rel_path.replace('imgs', 'imgs_occlusion_new')
+                
+            save_path = os.path.join(base_output_dir, rel_occlusion_path)
                 
             save_path2 = os.path.dirname(os.path.abspath(save_path))
             os.makedirs(save_path2, exist_ok=True)

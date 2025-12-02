@@ -48,6 +48,20 @@ def change_path(dataset_name, pathss):
             occlusion_path = pathss.replace('imgs', 'imgs_occlusion_new')
         else:
             occlusion_path = pathss
+    
+    # Check if occluded path exists, if not, try alternative location
+    import os
+    if not os.path.exists(occlusion_path):
+        # Try to find in occluded_data directory
+        parts = pathss.split('/')
+        if dataset_name in parts:
+            idx = parts.index(dataset_name)
+            # Create alternative path: ./occluded_data/dataset_name/rest_of_path
+            alt_path = os.path.join('./occluded_data', dataset_name, '/'.join(parts[idx+1:]))
+            alt_occlusion_path = alt_path.replace('imgs', 'imgs_occlusion_new').replace('train', 'train_occlusion_new').replace('test', 'test_occlusion_new').replace('cam_a', 'cam_a_occlusion_new').replace('cam_b', 'cam_b_occlusion_new')
+            if os.path.exists(os.path.dirname(alt_occlusion_path)):
+                occlusion_path = alt_occlusion_path
+    
     return occlusion_path
 
 
