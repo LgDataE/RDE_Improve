@@ -100,7 +100,7 @@ def main():
             
         processed_ids.add(img_id)
         
-        # Paths - fix the path construction
+        # Paths
         holistic_path = os.path.join(data_root, 'imgs', os.path.basename(img_path))
         occlusion_path = os.path.join(output_dir, 'imgs_occlusion_new', os.path.basename(img_path))
         
