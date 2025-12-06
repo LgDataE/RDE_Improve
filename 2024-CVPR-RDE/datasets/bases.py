@@ -228,8 +228,14 @@ class ImageTextDataset(Dataset):
                         holistic_path = os.path.join('/kaggle/working/RDE_Improve/data/CUHK-PEDES/imgs', filename)
                 
                 try:
-                    print(f"Occluded image not found: {img_path}")
-                    print(f"Fallback to holistic image: {holistic_path}")
+                    # Only print fallback log occasionally to reduce spam
+                    if not hasattr(self, '_fallback_count'):
+                        self._fallback_count = 0
+                    self._fallback_count += 1
+                    
+                    if self._fallback_count % 1000 == 1:  # Print every 1000 fallbacks
+                        print(f"Fallback to holistic (#{self._fallback_count}): {os.path.basename(img_path)}")
+                    
                     img = read_image(holistic_path)
                 except IOError:
                     # If both don't exist, raise the original error

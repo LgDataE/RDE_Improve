@@ -7,6 +7,7 @@ import sys
 import json
 from PIL import Image, ImageDraw
 import random
+import glob
 
 # Add current directory to path for imports
 sys.path.append('.')
@@ -42,10 +43,18 @@ class SimpleOcclusion():
                 occlusion_file = random.choice(self.files)
                 occlusion_img = Image.open(occlusion_file).convert('RGBA')
                 
-                # Resize and position
-                max_size = min(width, height) // 3
-                occlusion_img = occlusion_img.resize((random.randint(20, max_size), 
-                                                    random.randint(20, max_size)))
+                # Resize and position (robust to very small images)
+                max_size = max(1, min(width, height) // 3)
+                min_size = 20
+
+                # If image is too small, skip occlusion but still save
+                if max_size <= min_size:
+                    img.save(save_path)
+                    return True
+
+                occ_w = random.randint(min_size, max_size)
+                occ_h = random.randint(min_size, max_size)
+                occlusion_img = occlusion_img.resize((occ_w, occ_h))
                 
                 x = random.randint(0, max(1, width - occlusion_img.width))
                 y = random.randint(0, max(1, height - occlusion_img.height))
@@ -59,65 +68,53 @@ class SimpleOcclusion():
             return False
 
 def main():
-    # Configuration for RSTPReid
+    """Generate occluded images for all RSTPReid imgs on Kaggle.
+
+    Reads images from:
+        /kaggle/working/RDE_Improve/data/RSTPReid/imgs/*.jpg
+    Writes occluded images to:
+        ./occluded_data/RSTPReid/imgs_occlusion_new/<filename>.jpg
+    This matches the fallback path used by change_path in datasets/build.py.
+    """
+
+    # Fixed paths for Kaggle RSTPReid
     data_root = '/kaggle/working/RDE_Improve/data/RSTPReid/'
-    json_file = '/kaggle/working/RDE_Improve/data/RSTPReid/data_captions.json'
-    output_dir = './occluded_data/RSTPReid'
-    
+    img_dir = os.path.join(data_root, 'imgs')
+    output_root = './occluded_data/RSTPReid'
+    out_dir = os.path.join(output_root, 'imgs_occlusion_new')
+
     print("Creating occluded images for RSTPReid...")
-    print(f"Data root: {data_root}")
-    print(f"JSON file: {json_file}")
-    print(f"Output dir: {output_dir}")
-    
-    # Check paths
-    if not os.path.exists(json_file):
-        print(f"JSON file not found: {json_file}")
+    print(f"Image dir: {img_dir}")
+    print(f"Output dir: {out_dir}")
+
+    if not os.path.exists(img_dir):
+        print(f"Image directory not found: {img_dir}")
         return
-    
-    # Load data
-    with open(json_file, 'r') as f:
-        data = json.load(f)
-    
-    print(f"Loaded {len(data)} samples")
-    
-    # Create output directory
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Initialize occlusion adder
+
+    os.makedirs(out_dir, exist_ok=True)
+
+    # Collect all jpg images
+    img_paths = sorted(glob.glob(os.path.join(img_dir, '*.jpg')))
+    print(f"Found {len(img_paths)} images")
+
     occluder = SimpleOcclusion()
-    
-    # Process images
-    processed_ids = set()
+
     count = 0
-    
-    for item in data:
-        img_path = item['img_path']
-        img_id = item['id']
-        
-        # Only process first image per ID
-        if img_id in processed_ids:
+    for img_path in img_paths:
+        filename = os.path.basename(img_path)
+        save_path = os.path.join(out_dir, filename)
+
+        # Allow re-run: skip if occluded version already exists
+        if os.path.exists(save_path):
             continue
-            
-        processed_ids.add(img_id)
-        
-        # Paths
-        holistic_path = os.path.join(data_root, 'imgs', os.path.basename(img_path))
-        occlusion_path = os.path.join(output_dir, 'imgs_occlusion_new', os.path.basename(img_path))
-        
-        # Create directory
-        os.makedirs(os.path.dirname(occlusion_path), exist_ok=True)
-        
-        # Process
-        if os.path.exists(holistic_path):
-            if occluder.add_occlusion(holistic_path, occlusion_path):
-                count += 1
-                if count % 100 == 0:
-                    print(f"Processed {count} images...")
-        else:
-            print(f"Image not found: {holistic_path}")
-    
+
+        if occluder.add_occlusion(img_path, save_path):
+            count += 1
+            if count % 500 == 0:
+                print(f"Processed {count} images...")
+
     print(f"Completed! Generated {count} occluded images")
-    print(f"Occluded images saved in: {output_dir}")
+    print(f"Occluded images saved in: {out_dir}")
 
 if __name__ == '__main__':
     main()
