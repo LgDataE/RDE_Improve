@@ -45,6 +45,12 @@ class RDE(nn.Module):
                 mlp_ratio=bamg_mlp_ratio,
                 dropout=bamg_dropout,
             )
+            # ensure LayerNorm inside BAMG encoder uses fp16 to match CLIP features after convert_weights
+            for m in self.bamg_encoder.modules():
+                if isinstance(m, nn.LayerNorm):
+                    m.weight.data = m.weight.data.half()
+                    if m.bias is not None:
+                        m.bias.data = m.bias.data.half()
             if self.mgm_weight > 0:
                 mgm_hidden_dim = getattr(self.args, "mgm_hidden_dim", 0)
                 if mgm_hidden_dim <= 0:
