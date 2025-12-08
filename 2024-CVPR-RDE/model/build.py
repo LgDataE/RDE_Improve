@@ -2,6 +2,7 @@ from model import objectives
 
 from .CrossEmbeddingLayer_tse import TexualEmbeddingLayer, VisualEmbeddingLayer
 from .clip_model import build_CLIP_from_openai_pretrained, convert_weights
+from .bamg_modules import BottleneckFusionEncoder, MaskedGraphModelingHead
 import torch
 import torch.nn as nn 
 import torch.nn.functional as F
@@ -27,6 +28,40 @@ class RDE(nn.Module):
  
         self.visul_emb_layer = VisualEmbeddingLayer(ratio=args.select_ratio)
         self.texual_emb_layer = TexualEmbeddingLayer(ratio=args.select_ratio)
+        self.use_bamg = getattr(self.args, "use_bamg", False)
+        self.bamg_weight = getattr(self.args, "bamg_weight", 1.0)
+        self.mgm_weight = getattr(self.args, "mgm_weight", 0.0)
+        if self.use_bamg:
+            bamg_num_tokens = getattr(self.args, "bamg_num_tokens", 4)
+            bamg_depth = getattr(self.args, "bamg_depth", 2)
+            bamg_num_heads = getattr(self.args, "bamg_num_heads", 8)
+            bamg_mlp_ratio = getattr(self.args, "bamg_mlp_ratio", 4.0)
+            bamg_dropout = getattr(self.args, "bamg_dropout", 0.1)
+            self.bamg_encoder = BottleneckFusionEncoder(
+                dim=self.embed_dim,
+                num_bottlenecks=bamg_num_tokens,
+                depth=bamg_depth,
+                nhead=bamg_num_heads,
+                mlp_ratio=bamg_mlp_ratio,
+                dropout=bamg_dropout,
+            )
+            if self.mgm_weight > 0:
+                mgm_hidden_dim = getattr(self.args, "mgm_hidden_dim", 0)
+                if mgm_hidden_dim <= 0:
+                    mgm_hidden_dim = self.embed_dim
+                mgm_num_layers = getattr(self.args, "mgm_num_layers", 2)
+                mgm_mask_ratio = getattr(self.args, "mgm_mask_ratio", 0.15)
+                self.mgm_head = MaskedGraphModelingHead(
+                    dim=self.embed_dim,
+                    hidden_dim=mgm_hidden_dim,
+                    num_layers=mgm_num_layers,
+                    mask_ratio=mgm_mask_ratio,
+                )
+            else:
+                self.mgm_head = None
+        else:
+            self.bamg_encoder = None
+            self.mgm_head = None
  
         if 'TAL' in self.current_task:
             loss_type = 'TAL'
@@ -109,6 +144,36 @@ class RDE(nn.Module):
         ret.update({'bge_loss':loss1})
         ret.update({'tse_loss':loss2})
   
+        if self.use_bamg and self.bamg_encoder is not None:
+            img_tokens = image_feats
+            txt_tokens = text_feats
+            img_tokens, txt_tokens, fsn_tokens = self.bamg_encoder(img_tokens, txt_tokens)
+            i_bamg = img_tokens[:, 0, :].float()
+            txt_indices = caption_ids.argmax(dim=-1)
+            t_bamg = txt_tokens[torch.arange(txt_tokens.shape[0]), txt_indices].float()
+            bamg_per_loss, _ = objectives.compute_per_loss(
+                i_bamg,
+                t_bamg,
+                batch['pids'],
+                tau=self.args.tau,
+                margin=self.args.margin,
+                loss_type=self.loss_type,
+                logit_scale=self.logit_scale,
+            )
+            if self.loss_type in ['TAL', 'TRL']:
+                bamg_loss = (label_hat * bamg_per_loss).sum()
+            else:
+                denom = label_hat.sum().clamp(min=1.0)
+                bamg_loss = (label_hat * bamg_per_loss).sum() / denom
+            bamg_loss = self.bamg_weight * bamg_loss
+            ret.update({'bamg_loss': bamg_loss})
+
+            if self.mgm_head is not None and self.mgm_weight > 0:
+                patch_tokens = image_feats[:, 1:, :]
+                mgm_loss = self.mgm_head(patch_tokens)
+                mgm_loss = self.mgm_weight * mgm_loss
+                ret.update({'mgm_loss': mgm_loss})
+
         return ret
 
 

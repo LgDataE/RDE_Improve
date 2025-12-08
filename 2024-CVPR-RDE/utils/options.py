@@ -32,6 +32,18 @@ def get_args():
     parser.add_argument("--masked_token_unchanged_rate", type=float, default=0.1, help="masked token unchanged rate")
     parser.add_argument("--lr_factor", type=float, default=5.0, help="lr factor for random init self implement module")
 
+    parser.add_argument("--use_bamg", action="store_true")
+    parser.add_argument("--bamg_depth", type=int, default=2)
+    parser.add_argument("--bamg_num_tokens", type=int, default=4)
+    parser.add_argument("--bamg_num_heads", type=int, default=8)
+    parser.add_argument("--bamg_mlp_ratio", type=float, default=4.0)
+    parser.add_argument("--bamg_dropout", type=float, default=0.1)
+    parser.add_argument("--bamg_weight", type=float, default=1.0)
+    parser.add_argument("--mgm_weight", type=float, default=0.0)
+    parser.add_argument("--mgm_mask_ratio", type=float, default=0.15)
+    parser.add_argument("--mgm_hidden_dim", type=int, default=0)
+    parser.add_argument("--mgm_num_layers", type=int, default=2)
+
     ######################## loss settings ########################
     parser.add_argument("--loss_names", default='sdm+id+mlm', help="which loss to use ['mlm', 'cmpm', 'id', 'itc', 'sdm']")
 
