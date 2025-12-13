@@ -31,6 +31,7 @@ def get_args():
     parser.add_argument("--masked_token_rate", type=float, default=0.8, help="masked token rate for mlm task")
     parser.add_argument("--masked_token_unchanged_rate", type=float, default=0.1, help="masked token unchanged rate")
     parser.add_argument("--lr_factor", type=float, default=5.0, help="lr factor for random init self implement module")
+    parser.add_argument("--mlm_weight", type=float, default=0.0, help="loss weight for masked language modeling on text")
 
     parser.add_argument("--use_bamg", action="store_true")
     parser.add_argument("--bamg_depth", type=int, default=2)

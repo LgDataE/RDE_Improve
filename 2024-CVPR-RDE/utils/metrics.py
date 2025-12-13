@@ -111,6 +111,42 @@ class Evaluator():
         gids = torch.cat(gids, 0)
         gfeats = torch.cat(gfeats, 0) 
         return qfeats.cpu(), gfeats.cpu(), qids.cpu(), gids.cpu()
+
+    def _compute_embedding_bamg(self, model):
+        """Compute BAMG bottleneck features for text and image if available.
+
+        Falls back to base encoders if BAMG is disabled.
+        """
+        model = model.eval()
+        device = next(model.parameters()).device
+
+        qids, gids, qfeats, gfeats = [], [], [], []
+        # text
+        for pid, caption in self.txt_loader:
+            caption = caption.to(device)
+            with torch.no_grad():
+                if hasattr(model, 'encode_text_bamg'):
+                    text_feat = model.encode_text_bamg(caption).cpu()
+                else:
+                    text_feat = model.encode_text(caption).cpu()
+            qids.append(pid.view(-1))
+            qfeats.append(text_feat)
+        qids = torch.cat(qids, 0)
+        qfeats = torch.cat(qfeats, 0)
+
+        # image
+        for pid, img in self.img_loader:
+            img = img.to(device)
+            with torch.no_grad():
+                if hasattr(model, 'encode_image_bamg'):
+                    img_feat = model.encode_image_bamg(img).cpu()
+                else:
+                    img_feat = model.encode_image(img).cpu()
+            gids.append(pid.view(-1))
+            gfeats.append(img_feat)
+        gids = torch.cat(gids, 0)
+        gfeats = torch.cat(gfeats, 0)
+        return qfeats.cpu(), gfeats.cpu(), qids.cpu(), gids.cpu()
     
     def eval(self, model, i2t_metric=False):
         qfeats, gfeats, qids, gids = self._compute_embedding(model)
@@ -122,12 +158,20 @@ class Evaluator():
         vq_feats = F.normalize(vq_feats, p=2, dim=1) # text features
         vg_feats = F.normalize(vg_feats, p=2, dim=1) # image features
         sims_tse = vq_feats@vg_feats.t()
-        
         sims_dict = {
             'BGE': sims_bse,
             'TSE': sims_tse,
-            'BGE+TSE': (sims_bse+sims_tse)/2
+            'BGE+TSE': (sims_bse + sims_tse) / 2,
         }
+
+        # add BAMG branch if model supports it
+        if hasattr(model, 'encode_text_bamg') and hasattr(model, 'encode_image_bamg'):
+            bq_feats, bg_feats, _, _ = self._compute_embedding_bamg(model)
+            bq_feats = F.normalize(bq_feats, p=2, dim=1)
+            bg_feats = F.normalize(bg_feats, p=2, dim=1)
+            sims_bamg = bq_feats @ bg_feats.t()
+            sims_dict['BAMG'] = sims_bamg
+            sims_dict['BGE+TSE+BAMG'] = (sims_bse + sims_tse + sims_bamg) / 3
 
         table = PrettyTable(["task", "R1", "R5", "R10", "mAP", "mINP","rSum"])
         

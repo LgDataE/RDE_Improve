@@ -430,6 +430,36 @@ class CLIP(nn.Module):
 
         return x,atten
 
+
+    def encode_text_mlm(self, text, text_mask: torch.Tensor = None):
+        """Encode text with optional token masking for MLM.
+
+        Args:
+            text: LongTensor of shape [batch_size, n_ctx]
+            text_mask: Optional BoolTensor of same shape, where True means
+                the corresponding token embedding will be masked out (set to 0).
+        Returns:
+            token-level features after projection and the attention map.
+        """
+        x = self.token_embedding(text).type(self.dtype)  # [batch_size, n_ctx, d_model]
+
+        if text_mask is not None:
+            # mask out token embeddings before transformer
+            # text_mask: [batch_size, n_ctx] -> broadcast to last dim
+            x = x.masked_fill(text_mask.unsqueeze(-1), 0)
+
+        x = x + self.positional_embedding.type(self.dtype)
+        x = x.permute(1, 0, 2)  # NLD -> LND
+        outputs = self.transformer([x])
+        x = outputs[0]
+        atten = outputs[1]
+        x = x.permute(1, 0, 2)  # LND -> NLD
+        x = self.ln_final(x).type(self.dtype)
+
+        x = x @ self.text_projection
+
+        return x, atten
+
     def forward(self, image, text):
         image_features,atten_i = self.encode_image(image)
         text_features,atten_t = self.encode_text(text)

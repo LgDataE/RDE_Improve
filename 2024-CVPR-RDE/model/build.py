@@ -68,6 +68,13 @@ class RDE(nn.Module):
         else:
             self.bamg_encoder = None
             self.mgm_head = None
+
+        # masked language modeling on text (optional)
+        self.mlm_weight = getattr(self.args, "mlm_weight", 0.0)
+        if self.mlm_weight > 0:
+            self.mlm_head = nn.Linear(self.embed_dim, self.args.vocab_size)
+        else:
+            self.mlm_head = None
  
         if 'TAL' in self.current_task:
             loss_type = 'TAL'
@@ -103,6 +110,31 @@ class RDE(nn.Module):
         x,atten_t = self.base_model.encode_text(text.long())
         t_tse_f = self.texual_emb_layer(x, text, atten_t)
         return t_tse_f.float()
+
+    def encode_image_bamg(self, image):
+        """Image encoder with BAMG bottleneck for evaluation.
+
+        If BAMG is disabled, this falls back to the standard CLS embedding.
+        """
+        x, _ = self.base_model.encode_image(image)
+        if not self.use_bamg or self.bamg_encoder is None:
+            return x[:, 0, :].float()
+
+        img_tokens, _, _ = self.bamg_encoder(x, x)
+        return img_tokens[:, 0, :].float()
+
+    def encode_text_bamg(self, text):
+        """Text encoder with BAMG bottleneck for evaluation.
+
+        If BAMG is disabled, this falls back to the standard EOT embedding.
+        """
+        x, _ = self.base_model.encode_text(text.long())
+        if not self.use_bamg or self.bamg_encoder is None:
+            return x[torch.arange(x.shape[0]), text.argmax(dim=-1)].float()
+
+        img_tokens, txt_tokens, _ = self.bamg_encoder(x, x)
+        idx = text.argmax(dim=-1)
+        return txt_tokens[torch.arange(txt_tokens.shape[0]), idx].float()
 
     def compute_per_loss(self, batch):
         images = batch['images']
@@ -149,6 +181,40 @@ class RDE(nn.Module):
                                                 loss_type=self.loss_type,logit_scale=self.logit_scale)
         ret.update({'bge_loss':loss1})
         ret.update({'tse_loss':loss2})
+
+        # masked language modeling loss on text tokens (optional)
+        if self.mlm_head is not None and self.mlm_weight > 0:
+            text = caption_ids
+            bs, L = text.shape
+            device = text.device
+
+            with torch.no_grad():
+                # candidate positions: non-padding, excluding first token and EOT token
+                valid_mask = (text != 0)
+                first_pos = torch.zeros_like(text, dtype=torch.bool, device=device)
+                first_pos[:, 0] = True
+                eot_indices = text.argmax(dim=-1)
+                eot_pos = torch.zeros_like(text, dtype=torch.bool, device=device)
+                eot_pos[torch.arange(bs), eot_indices] = True
+                candidate = valid_mask & (~first_pos) & (~eot_pos)
+
+                rand = torch.rand_like(text.float())
+                mlm_mask = (rand < self.args.masked_token_rate) & candidate
+
+            if mlm_mask.any():
+                mlm_feats, _ = self.base_model.encode_text_mlm(text.long(), text_mask=mlm_mask)
+                mlm_logits = self.mlm_head(mlm_feats).float()
+
+                mlm_labels = text.clone()
+                mlm_labels[~mlm_mask] = -100
+
+                mlm_loss = F.cross_entropy(
+                    mlm_logits.view(-1, mlm_logits.size(-1)),
+                    mlm_labels.view(-1),
+                    ignore_index=-100,
+                )
+                mlm_loss = self.mlm_weight * mlm_loss
+                ret.update({'mlm_loss': mlm_loss})
   
         if self.use_bamg and self.bamg_encoder is not None:
             img_tokens = image_feats
