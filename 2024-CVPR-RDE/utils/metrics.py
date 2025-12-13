@@ -164,8 +164,9 @@ class Evaluator():
             'BGE+TSE': (sims_bse + sims_tse) / 2,
         }
 
-        # add BAMG branch if model supports it
-        if hasattr(model, 'encode_text_bamg') and hasattr(model, 'encode_image_bamg'):
+        # add BAMG branch if model supports it and BAMG is enabled
+        use_bamg = getattr(model, 'use_bamg', False)
+        if use_bamg and hasattr(model, 'encode_text_bamg') and hasattr(model, 'encode_image_bamg'):
             bq_feats, bg_feats, _, _ = self._compute_embedding_bamg(model)
             bq_feats = F.normalize(bq_feats, p=2, dim=1)
             bg_feats = F.normalize(bg_feats, p=2, dim=1)

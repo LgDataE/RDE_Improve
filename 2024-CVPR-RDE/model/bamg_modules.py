@@ -62,6 +62,26 @@ class BottleneckFusionEncoder(nn.Module):
             img_tokens, text_tokens, fsn_tokens = layer(img_tokens, text_tokens, fsn_tokens)
         return img_tokens, text_tokens, fsn_tokens
 
+    def forward_image(self, img_tokens):
+        b, ni, _ = img_tokens.size()
+        fsn_tokens = self.fsn_tokens.expand(b, -1, -1).to(img_tokens.dtype).to(img_tokens.device)
+        for layer in self.layers:
+            img_input = torch.cat([img_tokens, fsn_tokens], dim=1)
+            img_out = layer.img_layer(img_input)
+            img_tokens = img_out[:, :ni, :]
+            fsn_tokens = img_out[:, ni:, :]
+        return img_tokens, fsn_tokens
+
+    def forward_text(self, text_tokens):
+        b, nt, _ = text_tokens.size()
+        fsn_tokens = self.fsn_tokens.expand(b, -1, -1).to(text_tokens.dtype).to(text_tokens.device)
+        for layer in self.layers:
+            txt_input = torch.cat([text_tokens, fsn_tokens], dim=1)
+            txt_out = layer.txt_layer(txt_input)
+            text_tokens = txt_out[:, :nt, :]
+            fsn_tokens = txt_out[:, nt:, :]
+        return text_tokens, fsn_tokens
+
 
 class MaskedGraphModelingHead(nn.Module):
     def __init__(self, dim, hidden_dim, num_layers=2, mask_ratio=0.15):

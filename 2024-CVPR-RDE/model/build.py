@@ -120,7 +120,7 @@ class RDE(nn.Module):
         if not self.use_bamg or self.bamg_encoder is None:
             return x[:, 0, :].float()
 
-        img_tokens, _, _ = self.bamg_encoder(x, x)
+        img_tokens, _ = self.bamg_encoder.forward_image(x)
         return img_tokens[:, 0, :].float()
 
     def encode_text_bamg(self, text):
@@ -132,7 +132,7 @@ class RDE(nn.Module):
         if not self.use_bamg or self.bamg_encoder is None:
             return x[torch.arange(x.shape[0]), text.argmax(dim=-1)].float()
 
-        img_tokens, txt_tokens, _ = self.bamg_encoder(x, x)
+        txt_tokens, _ = self.bamg_encoder.forward_text(x)
         idx = text.argmax(dim=-1)
         return txt_tokens[torch.arange(txt_tokens.shape[0]), idx].float()
 
