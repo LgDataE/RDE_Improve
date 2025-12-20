@@ -9,8 +9,8 @@ DATASET_NAME=CUHK-PEDES
 # CUHK-PEDES ICFG-PEDES RSTPReid
 
 noisy_file=./noiseindex/${DATASET_NAME}_${noisy_rate}.npy
-CUDA_VISIBLE_DEVICES=0,1 \
-    python -m torch.distributed.run --nproc_per_node=2 train.py \
+CUDA_VISIBLE_DEVICES=0 \
+    python train.py \
     --noisy_rate $noisy_rate \
     --noisy_file $noisy_file \
     --name RDE \
