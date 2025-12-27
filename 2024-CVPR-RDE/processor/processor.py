@@ -185,7 +185,6 @@ def do_train(start_epoch, args, model, train_loader, evaluator, optimizer,
         "loss": AverageMeter(),
         "bge_loss": AverageMeter(),
         "tse_loss": AverageMeter(),
-        "mgcc_loss": AverageMeter(),
         "id_loss": AverageMeter(),
         "img_acc": AverageMeter(),
         "txt_acc": AverageMeter(),
@@ -229,7 +228,6 @@ def do_train(start_epoch, args, model, train_loader, evaluator, optimizer,
             meters['loss'].update(total_loss.item(), batch_size)
             meters['bge_loss'].update(ret.get('bge_loss', 0), batch_size)
             meters['tse_loss'].update(ret.get('tse_loss', 0), batch_size)
-            meters['mgcc_loss'].update(ret.get('mgcc_loss', 0), batch_size)
          
             optimizer.zero_grad()
             total_loss.backward()

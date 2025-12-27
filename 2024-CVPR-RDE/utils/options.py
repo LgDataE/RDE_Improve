@@ -45,14 +45,6 @@ def get_args():
     parser.add_argument("--mgm_hidden_dim", type=int, default=0)
     parser.add_argument("--mgm_num_layers", type=int, default=2)
 
-    parser.add_argument("--use_mgcc", action="store_true")
-    parser.add_argument("--mgcc_weight", type=float, default=1.0)
-    parser.add_argument("--mgcc_softmax_t", type=float, default=1e-2)
-    parser.add_argument("--mgcc_max_words", type=int, default=25)
-    parser.add_argument("--mgcc_rt", type=float, default=0.4)
-    parser.add_argument("--mgcc_rv", type=float, default=0.2)
-    parser.add_argument("--mgcc_aggregation_type", type=str, default="Attention")
-
     ######################## loss settings ########################
     parser.add_argument("--loss_names", default='sdm+id+mlm', help="which loss to use ['mlm', 'cmpm', 'id', 'itc', 'sdm']")
 
