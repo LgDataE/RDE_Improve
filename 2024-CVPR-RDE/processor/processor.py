@@ -285,3 +285,4 @@ def do_inference(model, test_img_loader, test_txt_loader):
 
     evaluator = Evaluator(test_img_loader, test_txt_loader)
     top1 = evaluator.eval(model.eval())
+    

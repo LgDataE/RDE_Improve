@@ -24,5 +24,4 @@ CUDA_VISIBLE_DEVICES=0 \
     --margin $margin \
     --dataset_name $DATASET_NAME \
     --loss_names ${loss}+sr${select_ratio}_tau${tau}_margin${margin}_n${noisy_rate}  \
-    --num_epoch 60 
- 
+    --num_epoch 60

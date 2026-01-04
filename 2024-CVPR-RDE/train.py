@@ -32,6 +32,8 @@ def set_seed(seed=0):
 
 if __name__ == '__main__':
     args = get_args()
+    # if "LOCAL_RANK" in os.environ:
+    #     args.local_rank = int(os.environ["LOCAL_RANK"])
     set_seed(1+get_rank())
     name = args.name
 
