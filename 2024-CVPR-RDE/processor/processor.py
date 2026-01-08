@@ -120,25 +120,40 @@ def get_loss(model, data_loader):
     device = "cuda"
     data_size = data_loader.dataset.__len__()
     real_labels = data_loader.dataset.real_correspondences
-    lossA, lossB, simsA,simsB = torch.zeros(data_size), torch.zeros(data_size), torch.zeros(data_size),torch.zeros(data_size)
+    use_cfam = getattr(model, 'use_cfam', False)
+    lossA, lossB, simsA, simsB = torch.zeros(data_size), torch.zeros(data_size), torch.zeros(data_size), torch.zeros(data_size)
+    if use_cfam:
+        lossC, simsC = torch.zeros(data_size), torch.zeros(data_size)
     for i, batch in enumerate(data_loader):
         batch = {k: v.to(device) for k, v in batch.items()}
         index = batch['index']
         with torch.no_grad(): 
-            la, lb, sa, sb = model.compute_per_loss(batch)
+            out = model.compute_per_loss(batch)
+            if isinstance(out, (tuple, list)) and len(out) == 6:
+                la, lb, lc, sa, sb, sc = out
+            else:
+                la, lb, sa, sb = out
+                lc, sc = None, None
             for b in range(la.size(0)):
-                lossA[index[b]]= la[b]
-                lossB[index[b]]= lb[b]
-                simsA[index[b]]= sa[b]
-                simsB[index[b]]= sb[b]
+                lossA[index[b]] = la[b]
+                lossB[index[b]] = lb[b]
+                simsA[index[b]] = sa[b]
+                simsB[index[b]] = sb[b]
+                if use_cfam and lc is not None:
+                    lossC[index[b]] = lc[b]
+                    simsC[index[b]] = sc[b]
             if i % 100 == 0:
                 logger.info(f'compute loss batch {i}')
 
     losses_A = (lossA-lossA.min())/(lossA.max()-lossA.min())    
     losses_B = (lossB-lossB.min())/(lossB.max()-lossB.min())
+    if use_cfam:
+        losses_C = (lossC-lossC.min())/(lossC.max()-lossC.min())
     
     input_loss_A = losses_A.reshape(-1,1) 
     input_loss_B = losses_B.reshape(-1,1)
+    if use_cfam:
+        input_loss_C = losses_C.reshape(-1,1)
  
     logger.info('\nFitting GMM ...') 
  
@@ -146,9 +161,13 @@ def get_loss(model, data_loader):
         # should have a better fit 
         gmm_A = GaussianMixture(n_components=2, max_iter=100, tol=1e-4, reg_covar=1e-6)
         gmm_B = GaussianMixture(n_components=2, max_iter=100, tol=1e-4, reg_covar=1e-6)
+        if use_cfam:
+            gmm_C = GaussianMixture(n_components=2, max_iter=100, tol=1e-4, reg_covar=1e-6)
     else:
         gmm_A = GaussianMixture(n_components=2, max_iter=10, tol=1e-2, reg_covar=5e-4)
         gmm_B = GaussianMixture(n_components=2, max_iter=10, tol=1e-2, reg_covar=5e-4)
+        if use_cfam:
+            gmm_C = GaussianMixture(n_components=2, max_iter=10, tol=1e-2, reg_covar=5e-4)
 
     gmm_A.fit(input_loss_A.cpu().numpy())
     prob_A = gmm_A.predict_proba(input_loss_A.cpu().numpy())
@@ -157,11 +176,18 @@ def get_loss(model, data_loader):
     gmm_B.fit(input_loss_B.cpu().numpy())
     prob_B = gmm_B.predict_proba(input_loss_B.cpu().numpy())
     prob_B = prob_B[:, gmm_B.means_.argmin()]
+    if use_cfam:
+        gmm_C.fit(input_loss_C.cpu().numpy())
+        prob_C = gmm_C.predict_proba(input_loss_C.cpu().numpy())
+        prob_C = prob_C[:, gmm_C.means_.argmin()]
  
  
     pred_A = split_prob(prob_A, 0.5)
     pred_B = split_prob(prob_B, 0.5)
-  
+    if use_cfam:
+        pred_C = split_prob(prob_C, 0.5)
+        return torch.Tensor(pred_A), torch.Tensor(pred_B), torch.Tensor(pred_C)
+
     return torch.Tensor(pred_A), torch.Tensor(pred_B)
 
 
@@ -206,13 +232,22 @@ def do_train(start_epoch, args, model, train_loader, evaluator, optimizer,
         # data_size = train_loader.dataset.__len__()
         # pred_A, pred_B  =  torch.ones(data_size), torch.ones(data_size)
     
-        pred_A, pred_B = get_loss(model, train_loader)
-    
-        consensus_division = pred_A + pred_B # 0,1,2 
-        consensus_division[consensus_division==1] += torch.randint(0, 2, size=(((consensus_division==1)+0).sum(),))
-        label_hat = consensus_division.clone()
-        label_hat[consensus_division>1] = 1
-        label_hat[consensus_division<=1] = 0 
+        out = get_loss(model, train_loader)
+        if isinstance(out, (tuple, list)) and len(out) == 3:
+            pred_A, pred_B, pred_C = out
+            consensus_division = pred_A + pred_B + pred_C
+            mask = (consensus_division == 1) + (consensus_division == 2)
+            consensus_division[mask > 0] += torch.randint(0, 2, size=((mask > 0) + 0).sum(),)
+            label_hat = consensus_division.clone()
+            label_hat[consensus_division >= 2] = 1
+            label_hat[consensus_division < 2] = 0
+        else:
+            pred_A, pred_B = out
+            consensus_division = pred_A + pred_B
+            consensus_division[consensus_division == 1] += torch.randint(0, 2, size=(((consensus_division == 1) + 0).sum(),))
+            label_hat = consensus_division.clone()
+            label_hat[consensus_division > 1] = 1
+            label_hat[consensus_division <= 1] = 0 
         
         model.train() 
         for n_iter, batch in enumerate(train_loader):

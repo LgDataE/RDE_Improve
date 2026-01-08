@@ -14,6 +14,46 @@ def l2norm(X, dim=-1, eps=1e-8):
     X = torch.div(X, norm)
     return X
 
+
+class CrossGranularityDecoder(nn.Module):
+    def __init__(self, dim: int, num_queries: int = 8, depth: int = 2, nhead: int = 8, dropout: float = 0.1):
+        super().__init__()
+        self.num_queries = num_queries
+        self.queries = nn.Parameter(torch.zeros(1, num_queries, dim))
+        nn.init.normal_(self.queries, std=0.02)
+        layer = nn.TransformerDecoderLayer(
+            d_model=dim,
+            nhead=nhead,
+            dim_feedforward=int(dim * 4),
+            dropout=dropout,
+            activation="relu",
+            batch_first=True,
+        )
+        self.decoder = nn.TransformerDecoder(layer, num_layers=depth)
+
+    def forward(self, tokens: torch.Tensor, key_padding_mask: torch.Tensor = None):
+        b = tokens.size(0)
+        q = self.queries.expand(b, -1, -1).to(tokens.dtype).to(tokens.device)
+        out = self.decoder(tgt=q, memory=tokens, memory_key_padding_mask=key_padding_mask)
+        return out
+
+
+class CFAMMatcher(nn.Module):
+    def __init__(self, dim: int, hidden_dim: int = 0):
+        super().__init__()
+        if hidden_dim <= 0:
+            hidden_dim = dim * 2
+        self.fc1 = nn.Linear(dim * 4, hidden_dim)
+        self.act = nn.ReLU(inplace=True)
+        self.fc2 = nn.Linear(hidden_dim, 1)
+
+    def forward(self, v_local: torch.Tensor, w_local: torch.Tensor):
+        v = v_local.mean(dim=1)
+        w = w_local.mean(dim=1)
+        feat = torch.cat([v, w, v * w, (v - w).abs()], dim=-1)
+        x = self.fc2(self.act(self.fc1(feat)))
+        return x.squeeze(-1)
+
 class RDE(nn.Module):
     def __init__(self, args, num_classes=11003):
         super().__init__()
@@ -28,6 +68,29 @@ class RDE(nn.Module):
  
         self.visul_emb_layer = VisualEmbeddingLayer(ratio=args.select_ratio)
         self.texual_emb_layer = TexualEmbeddingLayer(ratio=args.select_ratio)
+        self.use_cfam = getattr(self.args, "use_cfam", False)
+        self.cfam_local_weight = getattr(self.args, "cfam_local_weight", 1.0)
+        self.cfam_match_weight = getattr(self.args, "cfam_match_weight", 1.0)
+        if self.use_cfam:
+            self.cross_granularity_decoder = CrossGranularityDecoder(
+                dim=self.embed_dim,
+                num_queries=getattr(self.args, "cfam_k", 8),
+                depth=getattr(self.args, "cfam_num_layers", 2),
+                nhead=getattr(self.args, "cfam_num_heads", 8),
+                dropout=getattr(self.args, "cfam_dropout", 0.1),
+            )
+            for m in self.cross_granularity_decoder.modules():
+                if isinstance(m, nn.LayerNorm):
+                    m.weight.data = m.weight.data.half()
+                    if m.bias is not None:
+                        m.bias.data = m.bias.data.half()
+            self.cfam_classifier = CFAMMatcher(
+                dim=self.embed_dim,
+                hidden_dim=getattr(self.args, "cfam_match_hidden_dim", 0),
+            )
+        else:
+            self.cross_granularity_decoder = None
+            self.cfam_classifier = None
         self.use_bamg = getattr(self.args, "use_bamg", False)
         self.bamg_weight = getattr(self.args, "bamg_weight", 1.0)
         self.mgm_weight = getattr(self.args, "mgm_weight", 0.0)
@@ -157,7 +220,18 @@ class RDE(nn.Module):
                                                     margin=self.args.margin, \
                                                     loss_type=self.loss_type, \
                                                     logit_scale=self.logit_scale)
-        
+        if self.use_cfam and self.cross_granularity_decoder is not None:
+            txt_pad = (caption_ids == 0)
+            v_local = self.cross_granularity_decoder(image_feats, key_padding_mask=None)
+            w_local = self.cross_granularity_decoder(text_feats, key_padding_mask=txt_pad)
+            lossC, simsC = objectives.compute_cfam_local_sdm_per(
+                v_local,
+                w_local,
+                batch['pids'],
+                logit_scale=self.logit_scale,
+            )
+            return lossA.detach().cpu(), lossB.detach().cpu(), lossC.detach().cpu(), simsA, simsB, simsC
+
         return lossA.detach().cpu(), lossB.detach().cpu(), simsA, simsB
 
     def forward(self, batch):
@@ -181,6 +255,30 @@ class RDE(nn.Module):
                                                 loss_type=self.loss_type,logit_scale=self.logit_scale)
         ret.update({'bge_loss':loss1})
         ret.update({'tse_loss':loss2})
+
+        if self.use_cfam and self.cross_granularity_decoder is not None and self.cfam_classifier is not None:
+            txt_pad = (caption_ids == 0)
+            v_local = self.cross_granularity_decoder(image_feats, key_padding_mask=None)
+            w_local = self.cross_granularity_decoder(text_feats, key_padding_mask=txt_pad)
+
+            cfam_local_loss = objectives.compute_cfam_local_sdm_loss(
+                v_local,
+                w_local,
+                batch['pids'],
+                logit_scale=self.logit_scale,
+            )
+            cfam_local_loss = self.cfam_local_weight * cfam_local_loss
+            ret.update({'cfam_local_loss': cfam_local_loss})
+
+            cfam_match_loss = objectives.compute_cfam_match_loss(
+                v_local,
+                w_local,
+                batch['pids'],
+                matcher=self.cfam_classifier,
+                pos_labels=label_hat,
+            )
+            cfam_match_loss = self.cfam_match_weight * cfam_match_loss
+            ret.update({'cfam_match_loss': cfam_match_loss})
 
         # masked language modeling loss on text tokens (optional)
         if self.mlm_head is not None and self.mlm_weight > 0:

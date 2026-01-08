@@ -45,6 +45,15 @@ def get_args():
     parser.add_argument("--mgm_hidden_dim", type=int, default=0)
     parser.add_argument("--mgm_num_layers", type=int, default=2)
 
+    parser.add_argument("--use_cfam", action="store_true")
+    parser.add_argument("--cfam_k", type=int, default=8)
+    parser.add_argument("--cfam_num_layers", type=int, default=2)
+    parser.add_argument("--cfam_num_heads", type=int, default=8)
+    parser.add_argument("--cfam_dropout", type=float, default=0.1)
+    parser.add_argument("--cfam_local_weight", type=float, default=1.0)
+    parser.add_argument("--cfam_match_weight", type=float, default=1.0)
+    parser.add_argument("--cfam_match_hidden_dim", type=int, default=0)
+
     ######################## loss settings ########################
     parser.add_argument("--loss_names", default='sdm+id+mlm', help="which loss to use ['mlm', 'cmpm', 'id', 'itc', 'sdm']")
 

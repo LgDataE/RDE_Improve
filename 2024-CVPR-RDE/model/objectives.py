@@ -113,4 +113,71 @@ def compute_per_loss(image_features, text_features, pid, tau=0.02, margin=0.2, l
     return per_loss, scores.diag()
 
 
+def compute_cfam_local_sdm_loss(v_local: torch.Tensor, w_local: torch.Tensor, pid: torch.Tensor, logit_scale, epsilon: float = 1e-8):
+    if v_local.dim() != 3 or w_local.dim() != 3:
+        raise ValueError("v_local and w_local must be 3D tensors of shape [B, K, D].")
+    if v_local.shape[:2] != w_local.shape[:2] or v_local.shape[-1] != w_local.shape[-1]:
+        raise ValueError("v_local and w_local must have the same shape [B, K, D].")
+
+    v = F.normalize(v_local, p=2, dim=-1)
+    w = F.normalize(w_local, p=2, dim=-1)
+    scores = (w.unsqueeze(1) * v.unsqueeze(0)).sum(dim=-1).mean(dim=-1).float()
+    per = compute_sdm_per(scores, pid, logit_scale=logit_scale, epsilon=epsilon)
+    return per.mean()
+
+
+def compute_cfam_local_sdm_per(v_local: torch.Tensor, w_local: torch.Tensor, pid: torch.Tensor, logit_scale, epsilon: float = 1e-8):
+    if v_local.dim() != 3 or w_local.dim() != 3:
+        raise ValueError("v_local and w_local must be 3D tensors of shape [B, K, D].")
+    if v_local.shape != w_local.shape:
+        raise ValueError("v_local and w_local must have the same shape [B, K, D].")
+
+    v = F.normalize(v_local, p=2, dim=-1)
+    w = F.normalize(w_local, p=2, dim=-1)
+    scores = (w.unsqueeze(1) * v.unsqueeze(0)).sum(dim=-1).mean(dim=-1).float()
+    per = compute_sdm_per(scores, pid, logit_scale=logit_scale, epsilon=epsilon)
+    return per, scores.diag()
+
+
+def compute_cfam_match_loss(v_local: torch.Tensor, w_local: torch.Tensor, pid: torch.Tensor, matcher: nn.Module, pos_labels: torch.Tensor = None):
+    if v_local.dim() != 3 or w_local.dim() != 3:
+        raise ValueError("v_local and w_local must be 3D tensors of shape [B, K, D].")
+    B, K, D = v_local.shape
+    if w_local.shape != (B, K, D):
+        raise ValueError("v_local and w_local must have the same shape [B, K, D].")
+
+    v = F.normalize(v_local, p=2, dim=-1)
+    w = F.normalize(w_local, p=2, dim=-1)
+    sim = (w.unsqueeze(1) * v.unsqueeze(0)).sum(dim=-1).mean(dim=-1)
+
+    pid = pid.view(B, 1)
+    same_id = (pid == pid.t())
+    sim_i2t = sim.masked_fill(same_id, -1e9)
+    sim_t2i = sim.t().masked_fill(same_id, -1e9)
+
+    hard_txt = sim_i2t.argmax(dim=1)
+    hard_img = sim_t2i.argmax(dim=1)
+
+    pos_v = v_local
+    pos_w = w_local
+    neg_v1 = v_local
+    neg_w1 = w_local[hard_txt]
+    neg_v2 = v_local[hard_img]
+    neg_w2 = w_local
+
+    pair_v = torch.cat([pos_v, neg_v1, neg_v2], dim=0)
+    pair_w = torch.cat([pos_w, neg_w1, neg_w2], dim=0)
+    if pos_labels is None:
+        pos_labels = torch.ones(B, device=v_local.device)
+    else:
+        pos_labels = pos_labels.to(device=v_local.device, dtype=torch.float)
+        if pos_labels.numel() != B:
+            raise ValueError("pos_labels must have shape [B].")
+
+    labels = torch.cat([pos_labels, torch.zeros(2 * B, device=v_local.device)], dim=0)
+
+    logits = matcher(pair_v, pair_w).view(-1)
+    return F.binary_cross_entropy_with_logits(logits, labels)
+
+
 
