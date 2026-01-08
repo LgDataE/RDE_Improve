@@ -237,14 +237,18 @@ def do_train(start_epoch, args, model, train_loader, evaluator, optimizer,
             pred_A, pred_B, pred_C = out
             consensus_division = pred_A + pred_B + pred_C
             mask = (consensus_division == 1) + (consensus_division == 2)
-            consensus_division[mask > 0] += torch.randint(0, 2, size=((mask > 0) + 0).sum(),)
+            num = int((mask > 0).sum().item())
+            if num > 0:
+                consensus_division[mask > 0] += torch.randint(0, 2, (num,), device=consensus_division.device)
             label_hat = consensus_division.clone()
             label_hat[consensus_division >= 2] = 1
             label_hat[consensus_division < 2] = 0
         else:
             pred_A, pred_B = out
             consensus_division = pred_A + pred_B
-            consensus_division[consensus_division == 1] += torch.randint(0, 2, size=(((consensus_division == 1) + 0).sum(),))
+            num = int((consensus_division == 1).sum().item())
+            if num > 0:
+                consensus_division[consensus_division == 1] += torch.randint(0, 2, (num,), device=consensus_division.device)
             label_hat = consensus_division.clone()
             label_hat[consensus_division > 1] = 1
             label_hat[consensus_division <= 1] = 0 
