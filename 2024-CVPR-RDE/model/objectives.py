@@ -148,7 +148,7 @@ def compute_cfam_match_loss(v_local: torch.Tensor, w_local: torch.Tensor, pid: t
 
     v = F.normalize(v_local, p=2, dim=-1)
     w = F.normalize(w_local, p=2, dim=-1)
-    sim = (w.unsqueeze(1) * v.unsqueeze(0)).sum(dim=-1).mean(dim=-1)
+    sim = (w.unsqueeze(1) * v.unsqueeze(0)).sum(dim=-1).mean(dim=-1).float()
 
     pid = pid.view(B, 1)
     same_id = (pid == pid.t())
