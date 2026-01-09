@@ -266,6 +266,7 @@ class RDE(nn.Module):
                 w_local,
                 batch['pids'],
                 logit_scale=self.logit_scale,
+                pos_labels=label_hat,
             )
             cfam_local_loss = self.cfam_local_weight * cfam_local_loss
             ret.update({'cfam_local_loss': cfam_local_loss})

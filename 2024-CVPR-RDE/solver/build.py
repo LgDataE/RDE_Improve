@@ -17,6 +17,8 @@ def build_optimizer(args, model):
         if "cross" in key:
             # use large learning rate for random initialized cross modal module
             lr =  args.lr * args.lr_factor # default 5.0
+        if "bamg" in key or "mgm" in key:
+            lr = args.lr * args.lr_factor
         if "bias" in key:
             lr = args.lr * args.bias_lr_factor
             weight_decay = args.weight_decay_bias

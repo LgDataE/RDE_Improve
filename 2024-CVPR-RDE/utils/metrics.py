@@ -175,10 +175,11 @@ class Evaluator():
             sims_dict['BGE+TSE+BAMG'] = (sims_bse + sims_tse + sims_bamg) / 3
 
         table = PrettyTable(["task", "R1", "R5", "R10", "mAP", "mINP","rSum"])
-        
+        r1_dict = {}
         for key in sims_dict.keys():
             sims = sims_dict[key]
             rs = get_metrics(sims, qids, gids, f'{key}-t2i',False)
+            r1_dict[key] = rs[1]
             table.add_row(rs)
             if i2t_metric:
                 i2t_cmc, i2t_mAP, i2t_mINP, _ = rank(similarity=sims.t(), q_pids=gids, g_pids=qids, max_rank=10, get_mAP=True)
@@ -192,5 +193,9 @@ class Evaluator():
         table.custom_format["mINP"] = lambda f, v: f"{v:.2f}"
         table.custom_format["RSum"] = lambda f, v: f"{v:.2f}"
         self.logger.info('\n' + str(table))
-        
-        return rs[1]
+
+        if 'BGE+TSE' in r1_dict:
+            return float(r1_dict['BGE+TSE'])
+        if len(r1_dict) == 0:
+            return 0.0
+        return float(max(r1_dict.values()))

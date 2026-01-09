@@ -113,7 +113,7 @@ def compute_per_loss(image_features, text_features, pid, tau=0.02, margin=0.2, l
     return per_loss, scores.diag()
 
 
-def compute_cfam_local_sdm_loss(v_local: torch.Tensor, w_local: torch.Tensor, pid: torch.Tensor, logit_scale, epsilon: float = 1e-8):
+def compute_cfam_local_sdm_loss(v_local: torch.Tensor, w_local: torch.Tensor, pid: torch.Tensor, logit_scale, epsilon: float = 1e-8, pos_labels: torch.Tensor = None):
     if v_local.dim() != 3 or w_local.dim() != 3:
         raise ValueError("v_local and w_local must be 3D tensors of shape [B, K, D].")
     if v_local.shape[:2] != w_local.shape[:2] or v_local.shape[-1] != w_local.shape[-1]:
@@ -123,7 +123,13 @@ def compute_cfam_local_sdm_loss(v_local: torch.Tensor, w_local: torch.Tensor, pi
     w = F.normalize(w_local, p=2, dim=-1)
     scores = (w.unsqueeze(1) * v.unsqueeze(0)).sum(dim=-1).mean(dim=-1).float()
     per = compute_sdm_per(scores, pid, logit_scale=logit_scale, epsilon=epsilon)
-    return per.mean()
+    if pos_labels is None:
+        return per.mean()
+    pos_labels = pos_labels.to(device=per.device, dtype=per.dtype).view(-1)
+    if pos_labels.numel() != per.numel():
+        raise ValueError("pos_labels must have shape [B].")
+    denom = pos_labels.sum().clamp(min=1.0)
+    return (per * pos_labels).sum() / denom
 
 
 def compute_cfam_local_sdm_per(v_local: torch.Tensor, w_local: torch.Tensor, pid: torch.Tensor, logit_scale, epsilon: float = 1e-8):
