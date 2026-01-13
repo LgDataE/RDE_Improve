@@ -61,12 +61,29 @@ class Checkpointer:
         self.logger.info("Loading checkpoint from {}".format(f))
         checkpoint = self._load_file(f)
         self._load_model(checkpoint)
-        if "optimizer" in checkpoint and self.optimizer:
+        opt_state = checkpoint.pop("optimizer", None)
+        if opt_state is not None and self.optimizer:
             self.logger.info("Loading optimizer from {}".format(f))
-            self.optimizer.load_state_dict(checkpoint.pop("optimizer"))
-        if "scheduler" in checkpoint and self.scheduler:
+            try:
+                self.optimizer.load_state_dict(opt_state)
+            except (ValueError, RuntimeError) as e:
+                self.logger.warning(
+                    "Skip loading optimizer state due to mismatch between checkpoint and current model/optimizer: {}".format(
+                        str(e)
+                    )
+                )
+
+        sched_state = checkpoint.pop("scheduler", None)
+        if sched_state is not None and self.scheduler:
             self.logger.info("Loading scheduler from {}".format(f))
-            self.scheduler.load_state_dict(checkpoint.pop("scheduler"))
+            try:
+                self.scheduler.load_state_dict(sched_state)
+            except (ValueError, RuntimeError) as e:
+                self.logger.warning(
+                    "Skip loading scheduler state due to mismatch between checkpoint and current optimizer/scheduler: {}".format(
+                        str(e)
+                    )
+                )
         # return any further checkpoint data
         return checkpoint
 
